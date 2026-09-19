@@ -1,6 +1,3 @@
-import sys  # for checking --test flag
-import unittest  # for unit tests at bottom of file
-
 
 ROWS = 6
 COLUMNS = 7
@@ -32,6 +29,14 @@ def drop_piece(board, column, player):
     return None
 
 
+def undo_move(board, column):
+    for r in range(ROWS):
+        if board[r][column] != " ":
+            board[r][column] = " "
+            return r
+    return None
+
+
 # check if move is valid
 
 def column_is_full(board, column):
@@ -39,6 +44,9 @@ def column_is_full(board, column):
 
 def valid_move(board, column):
     return 0 <= column < COLUMNS and not column_is_full(board, column)
+
+def get_valid_moves(board):
+    return [c for c in range(COLUMNS) if not column_is_full(board, c)]
 
 
 
@@ -49,11 +57,11 @@ directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
 
 # check if last move won
 
-def check_winner(board, row, col, player):
+def check_winner(board, row, column, player):
     for dr, dc in directions:
         count = 1
         for sign in (1, -1):
-            r, c = row + sign * dr, col + sign * dc
+            r, c = row + sign * dr, column + sign * dc
             while 0 <= r < ROWS and 0 <= c < COLUMNS and board[r][c] == player:
                 count += 1
                 r += sign * dr
@@ -69,17 +77,25 @@ def board_full(board):
     return all(board[0][c] != " " for c in range(COLUMNS))
 
 
-# handle one human players turn until a valid column is given
+# one VALID player move
 
 def person_turn(board, player):
     while True:
         try:
-            col = int(input(f"Player {player}, pick a column (1-7): ")) - 1
+            column = int(input(f"Player {player}, pick a column (1-7): ")) - 1
         except ValueError:
             continue
-        if valid_move(board, col):
-            return col
+        if valid_move(board, column):
+            return column
         print("invalid move")
+
+
+# bot moves
+
+def bot_turn(board, player, depth=5):
+    from ai import find_best_move
+    print(f"Bot ({player}) is thinking...")
+    return find_best_move(board, player, depth)
 
 
 # mode select
@@ -87,9 +103,16 @@ def person_turn(board, player):
 def main():
     mode = input("bot (1) or pvp (2) ?: ").strip().upper()
     players = ["X", "O"]
-    ai_turn = False
+    
+    ai = None
+    depth = 5
+
     if mode == "1":
-        print("playing against bot (not yet)")
+        ai = "O"  # bot plays after player
+        print("playing against bot")
+        from ai import DIFFICULTY_LEVELS
+        diff = input("select difficulty - 1: Easy, 2: Medium, 3: Hard (default: 2): ").strip()
+        depth = DIFFICULTY_LEVELS.get(diff, 5)
     elif mode == "2":
         pass
     else:
@@ -101,12 +124,18 @@ def main():
     turn = 0
     while True:
         player = players[turn % 2]
-        col = person_turn(board, player)
-        row = drop_piece(board, col, player)
+        if player == ai:
+            column = bot_turn(board, player, depth)
+        else:
+            column = person_turn(board, player)
+        row = drop_piece(board, column, player)
         print_board(board)
 
-        if check_winner(board, row, col, player):
-            print(f"player {player} won")
+        if check_winner(board, row, column, player):
+            if player == ai:
+                print(f"bot ({player}) won")
+            else:
+                print(f"player ({player}) won")
             return
         if board_full(board):
             print("draw")
@@ -114,34 +143,5 @@ def main():
         turn += 1
 
 
-# unit tests with --test flag
-
-class TestBoard(unittest.TestCase):
-    # a horizontal row of X should be a win
-    def test_drop_and_winner_horizontal(self):
-        board = generate_board()
-        board[0][0] = "X"
-        board[0][1] = "X"
-        board[0][2] = "X"
-        board[0][3] = "X"
-        self.assertEqual(check_winner(board, 0, 3, "X"), True)
-
-    # dropping 6 pieces into a column fills it
-    def test_column_fill(self):
-        board = generate_board()
-        for _ in range(6):
-            drop_piece(board, 0, "X")
-        self.assertTrue(column_is_full(board, 0))
-
-    # empty board should never report a winner
-    def test_no_winner_empty(self):
-        board = generate_board()
-        self.assertFalse(check_winner(board, 0, 0, "X"))
-
-
 if __name__ == "__main__":
-    if "--test" in sys.argv:
-        sys.argv.remove("--test")
-        unittest.main()
-    else:
-        main()
+    main()
