@@ -84,35 +84,66 @@ def evaluate_board(board, player):
     return score
 
 
-# recursively search the game tree with alpha-beta pruning
+# Transposition table node types
+EXACT = 0
+LOWERBOUND = 1
+UPPERBOUND = 2
+
+# Transposition table: maps (board_tuple, is_maximizing) -> (depth, flag, score)
+transposition_table = {}
+
+def board_to_tuple(board):
+    return tuple(tuple(row) for row in board)
+
+def clear_transposition_table():
+    transposition_table.clear()
+
+
+# recursively search the game tree with alpha-beta pruning and transposition table caching
 # is_maximizing = True when it's the bot's turn, False when it's the human's
 # alpha = best score maximizing player can guarantee so far
 # beta = best score minimizing player can guarantee so far
 # last_row / last_column tell us where the most recent piece was dropped
 
 def minimax(board, depth, alpha, beta, is_maximizing, player, opponent, last_row=None, last_column=None):
-    # if there was a last move, first check whether it just won the game
+    # if there was a last move, first check if it just won the game
     if last_row is not None and last_column is not None:
         if is_maximizing:
-            # human just moved, so the winner would be the human
+            # human just moved, so the winner is the human
             if check_winner(board, last_row, last_column, opponent):
                 return -10000 - depth
         else:
-            # bot just moved, so the winner would be the bot
+            # bot just moved, so the winner is the bot
             if check_winner(board, last_row, last_column, player):
                 return 10000 + depth
 
-    # no moves left - a tie
+    # no moves left so it is a tie
     if board_full(board):
         return 0
 
-    # ran out of search depth - fall back to the heuristic
+    # ran out of search depth return the heuristic value
     if depth == 0:
         return evaluate_board(board, player)
 
+    # check transposition table
+    alpha_orig = alpha
+    beta_orig = beta
+    board_key = (board_to_tuple(board), is_maximizing)
+    if board_key in transposition_table:
+        cached_depth, cached_flag, cached_score = transposition_table[board_key]
+        if cached_depth >= depth:
+            if cached_flag == EXACT:
+                return cached_score
+            elif cached_flag == LOWERBOUND:
+                alpha = max(alpha, cached_score)
+            elif cached_flag == UPPERBOUND:
+                beta = min(beta, cached_score)
+            if alpha >= beta:
+                return cached_score
+
     valid_moves = get_ordered_moves(board)
 
-    # bot's turn: pick the move giving the highest score
+    # bot turn: pick the move giving the highest score
     if is_maximizing:
         best = -float("inf")
         for column in valid_moves:
@@ -124,9 +155,7 @@ def minimax(board, depth, alpha, beta, is_maximizing, player, opponent, last_row
             alpha = max(alpha, best)
             if beta <= alpha:
                 break  # Beta cutoff
-        return best
-
-    # human's turn: pick the move giving the lowest score
+    # human turn: pick the move giving the lowest score
     else:
         best = float("inf")
         for column in valid_moves:
@@ -137,8 +166,18 @@ def minimax(board, depth, alpha, beta, is_maximizing, player, opponent, last_row
                 best = value
             beta = min(beta, best)
             if beta <= alpha:
-                break  # Alpha cutoff
-        return best
+                break  # alpha cutoff
+
+    # record position in transposition table
+    if best <= alpha_orig:
+        flag = UPPERBOUND
+    elif best >= beta_orig:
+        flag = LOWERBOUND
+    else:
+        flag = EXACT
+    transposition_table[board_key] = (depth, flag, best)
+
+    return best
 
 
 # difficulty presets: depth determines how many turns ahead the bot calculates
@@ -154,6 +193,7 @@ DIFFICULTY_LEVELS = {
 # player is the bot's piece (passed from connect4.py)
 
 def find_best_move(board, player, depth=5):
+    clear_transposition_table()
     opponent = "O" if player == "X" else "X"
     valid_moves = get_ordered_moves(board)
 
