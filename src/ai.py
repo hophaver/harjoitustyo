@@ -92,6 +92,16 @@ UPPERBOUND = 2
 # Transposition table: maps (board_tuple, is_maximizing) -> (depth, flag, score)
 transposition_table = {}
 
+# search statistics for benchmarking and testing
+search_stats = {"nodes": 0, "tt_hits": 0}
+
+def reset_search_stats():
+    search_stats["nodes"] = 0
+    search_stats["tt_hits"] = 0
+
+def get_search_stats():
+    return dict(search_stats)
+
 def board_to_tuple(board):
     return tuple(tuple(row) for row in board)
 
@@ -106,6 +116,8 @@ def clear_transposition_table():
 # last_row / last_column tell us where the most recent piece was dropped
 
 def minimax(board, depth, alpha, beta, is_maximizing, player, opponent, last_row=None, last_column=None):
+    search_stats["nodes"] += 1
+
     # if there was a last move, first check if it just won the game
     if last_row is not None and last_column is not None:
         if is_maximizing:
@@ -133,12 +145,14 @@ def minimax(board, depth, alpha, beta, is_maximizing, player, opponent, last_row
         cached_depth, cached_flag, cached_score = transposition_table[board_key]
         if cached_depth >= depth:
             if cached_flag == EXACT:
+                search_stats["tt_hits"] += 1
                 return cached_score
             elif cached_flag == LOWERBOUND:
                 alpha = max(alpha, cached_score)
             elif cached_flag == UPPERBOUND:
                 beta = min(beta, cached_score)
             if alpha >= beta:
+                search_stats["tt_hits"] += 1
                 return cached_score
 
     valid_moves = get_ordered_moves(board)
@@ -194,6 +208,7 @@ DIFFICULTY_LEVELS = {
 
 def find_best_move(board, player, depth=5):
     clear_transposition_table()
+    reset_search_stats()
     opponent = "O" if player == "X" else "X"
     valid_moves = get_ordered_moves(board)
 
